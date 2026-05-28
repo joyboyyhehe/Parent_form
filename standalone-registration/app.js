@@ -82,9 +82,22 @@ function setupValidationListeners() {
     if (!el) return;
     
     el.addEventListener('input', (e) => {
-      // Force digit-only constraints on tel inputs
+      // Force digit-only constraints on tel inputs & clean country codes on autofill
       if (id === 'parent1Phone' || id === 'parent2Phone') {
-        e.target.value = e.target.value.replace(/\D/g, '');
+        let val = e.target.value.replace(/\D/g, '');
+        // If it starts with 91 and is longer than 10 digits, strip the 91 prefix
+        if (val.length > 10 && val.startsWith('91')) {
+          val = val.substring(2);
+        }
+        // Truncate to maximum 10 digits to prevent HTML validator lockups
+        if (val.length > 10) {
+          val = val.substring(0, 10);
+        }
+        
+        // Only update the value if it has actually changed to prevent cursor jumps and virtual keyboard hides on iOS
+        if (e.target.value !== val) {
+          e.target.value = val;
+        }
       }
       
       // Save value
