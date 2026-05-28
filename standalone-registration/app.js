@@ -151,18 +151,18 @@ function setupValidationListeners() {
 
 // 5. Firebase SMS OTP Handlers
 function getRecaptchaVerifier() {
-  if (!recaptchaVerifier) {
-    recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-      size: 'invisible',
-      callback: () => {
-        // reCAPTCHA solved
-      },
-      'expired-callback': () => {
-        showOtpError('reCAPTCHA expired. Please try again.');
-        resetRecaptcha();
-      }
-    });
-  }
+  resetRecaptcha();
+  
+  recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+    size: 'invisible',
+    callback: () => {
+      // reCAPTCHA solved
+    },
+    'expired-callback': () => {
+      showOtpError('reCAPTCHA expired. Please try again.');
+      resetRecaptcha();
+    }
+  });
   return recaptchaVerifier;
 }
 
@@ -171,9 +171,15 @@ function resetRecaptcha() {
     try {
       recaptchaVerifier.clear();
     } catch (e) {
-      console.error(e);
+      console.error('Error clearing recaptcha verifier:', e);
     }
     recaptchaVerifier = null;
+  }
+  
+  // Clear the container DOM to prevent "reCAPTCHA has already been rendered in this element" error
+  const container = document.getElementById('recaptcha-container');
+  if (container) {
+    container.innerHTML = '';
   }
 }
 
