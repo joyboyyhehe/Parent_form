@@ -1,0 +1,540 @@
+// ═══════════════════════════════════════════════
+//    Happy Times — Standalone Registration App Logic
+//    Vanilla JS ES6, Firebase Compat CDN Integration
+//    ═══════════════════════════════════════════════
+
+// 1. Firebase Production Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDixFR1hkz9rqEr8rcUen8r7aosAHXXgT0",
+  authDomain: "happytimes-preschool-pwa.firebaseapp.com",
+  projectId: "happytimes-preschool-pwa",
+  storageBucket: "happytimes-preschool-pwa.firebasestorage.app",
+  messagingSenderId: "390518602758",
+  appId: "1:390518602758:web:bc23ea8bf2ffce9a35d787"
+};
+
+// Initialize Firebase SDK
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// 2. Global State Variables
+let currentStep = 1;
+const totalSteps = 3;
+
+const formData = {
+  studentName: '',
+  branch: '',
+  className: '',
+  parent1Name: '',
+  parent1Relation: 'Mother',
+  parent1Phone: '',
+  parent1Email: '',
+  parent2Name: '',
+  parent2Relation: 'Father',
+  parent2Phone: '',
+  parent2Email: ''
+};
+
+// Verification and OTP Flow States
+let isPhoneVerified = false;
+let verifiedUid = null;
+let recaptchaVerifier = null;
+let confirmationResult = null;
+let sendingOtp = false;
+let verifyingOtp = false;
+
+// Branch Maps for Preview UI
+const branchNames = {
+  'padmanabhanagar': 'Padmanabhanagar',
+  'outer-ring-road': 'Outer Ring Road',
+  'chikkalsandra': 'Chikkalsandra',
+  'rr-nagar': 'RR Nagar'
+};
+
+// Initialize Lucide Icons on start
+document.addEventListener("DOMContentLoaded", () => {
+  lucide.createIcons();
+  
+  // Set up listeners for real-time validation and numeric locks
+  setupValidationListeners();
+});
+
+// 3. Helper Form Input Toggles
+function setRelation(fieldId, value) {
+  formData[fieldId] = value;
+  
+  if (fieldId === 'parent1Relation') {
+    document.getElementById('rel-mother').classList.toggle('active', value === 'Mother');
+    document.getElementById('rel-father').classList.toggle('active', value === 'Father');
+  } else if (fieldId === 'parent2Relation') {
+    document.getElementById('rel-father-2').classList.toggle('active', value === 'Father');
+    document.getElementById('rel-mother-2').classList.toggle('active', value === 'Mother');
+  }
+}
+
+// 4. Setup Input Watchers & Errors Reset
+function setupValidationListeners() {
+  const inputs = ['studentName', 'parent1Name', 'parent1Phone', 'parent2Phone'];
+  
+  inputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    
+    el.addEventListener('input', (e) => {
+      // Force digit-only constraints on tel inputs
+      if (id === 'parent1Phone' || id === 'parent2Phone') {
+        e.target.value = e.target.value.replace(/\D/g, '');
+      }
+      
+      // Save value
+      formData[id] = e.target.value;
+      
+      // Real-time Phone Verification Reset Trigger
+      if (id === 'parent1Phone') {
+        resetVerification();
+        
+        // Auto-show/hide OTP Verify Action Card
+        const verifyGate = document.getElementById('otp-actions-gate');
+        if (e.target.value.length === 10) {
+          verifyGate.classList.remove('hidden');
+        } else {
+          verifyGate.classList.add('hidden');
+        }
+      }
+      
+      // Clear specific error highlights
+      e.target.classList.remove('error');
+      const errBadge = document.getElementById(`err-${id}`);
+      if (errBadge) errBadge.classList.add('hidden');
+    });
+  });
+
+  // Select dropdowns
+  ['branch', 'className'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', (e) => {
+      formData[id] = e.target.value;
+      e.target.classList.remove('error');
+      document.getElementById(`err-${id}`).classList.add('hidden');
+    });
+  });
+  
+  // Non-validated regular inputs
+  ['parent1Email', 'parent2Name', 'parent2Email'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', (e) => {
+        formData[id] = e.target.value;
+      });
+    }
+  });
+}
+
+// 5. Firebase SMS OTP Handlers
+function getRecaptchaVerifier() {
+  if (!recaptchaVerifier) {
+    recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+      },
+      'expired-callback': () => {
+        showOtpError('reCAPTCHA expired. Please try again.');
+        resetRecaptcha();
+      }
+    });
+  }
+  return recaptchaVerifier;
+}
+
+function resetRecaptcha() {
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (e) {
+      console.error(e);
+    }
+    recaptchaVerifier = null;
+  }
+}
+
+async function requestOtp() {
+  hideOtpError();
+  const phone = formData.parent1Phone.trim();
+  if (!phone || phone.length !== 10) {
+    showOtpError('Please enter a valid 10-digit phone number');
+    return;
+  }
+
+  const sendBtn = document.getElementById('send-otp-btn');
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 spin"></i> Sending OTP code...`;
+  lucide.createIcons();
+  
+  try {
+    const formattedPhone = `+91${phone}`;
+    const verifier = getRecaptchaVerifier();
+    confirmationResult = await auth.signInWithPhoneNumber(formattedPhone, verifier);
+    
+    // Toggle UI state
+    document.getElementById('sent-phone-display').innerText = `+91 ${phone}`;
+    document.getElementById('otp-confirm-box').classList.remove('hidden');
+    sendBtn.classList.add('hidden');
+  } catch (err) {
+    console.error('Send OTP error:', err);
+    showOtpError(err.message || 'Failed to send SMS verification code.');
+    resetRecaptcha();
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Verify Phone via SMS OTP`;
+    lucide.createIcons();
+  }
+}
+
+async function confirmOtp() {
+  hideOtpError();
+  const otpVal = document.getElementById('otpCode').value.trim();
+  if (!otpVal || otpVal.length !== 6) {
+    showOtpError('Please enter a 6-digit verification code');
+    return;
+  }
+
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  verifyBtn.disabled = true;
+  verifyBtn.innerText = 'Syncing...';
+  
+  try {
+    const result = await confirmationResult.confirm(otpVal);
+    verifiedUid = result.user.uid;
+    isPhoneVerified = true;
+    
+    // Hide OTP UI elements
+    document.getElementById('otp-actions-gate').classList.add('hidden');
+    document.getElementById('parent1Phone').disabled = true;
+    document.getElementById('change-phone-btn').classList.remove('hidden');
+    document.getElementById('verified-badge').classList.remove('hidden');
+    
+    // Clear validation error if present
+    document.getElementById('parent1Phone').classList.remove('error');
+    document.getElementById('err-parent1Phone').classList.add('hidden');
+    
+    // Enable Step 2 transition continue button
+    document.getElementById('continue-btn').disabled = false;
+
+    // Immediately sign out unapproved registered accounts
+    await auth.signOut();
+  } catch (err) {
+    console.error('Verify OTP error:', err);
+    showOtpError('Incorrect verification code. Please try again.');
+    verifyBtn.disabled = false;
+    verifyBtn.innerText = 'Confirm';
+  }
+}
+
+function resetVerification() {
+  isPhoneVerified = false;
+  verifiedUid = null;
+  confirmationResult = null;
+  
+  document.getElementById('verified-badge').classList.add('hidden');
+  document.getElementById('change-phone-btn').classList.add('hidden');
+  document.getElementById('parent1Phone').disabled = false;
+  
+  // Reset Send OTP button UI
+  const sendBtn = document.getElementById('send-otp-btn');
+  sendBtn.classList.remove('hidden');
+  sendBtn.disabled = false;
+  sendBtn.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Verify Phone via SMS OTP`;
+  
+  document.getElementById('otp-confirm-box').classList.add('hidden');
+  document.getElementById('otpCode').value = '';
+  hideOtpError();
+  lucide.createIcons();
+}
+
+function showOtpError(msg) {
+  const errBox = document.getElementById('otp-error-box');
+  document.getElementById('otp-error-text').innerText = msg;
+  errBox.classList.remove('hidden');
+}
+
+function hideOtpError() {
+  document.getElementById('otp-error-box').classList.add('hidden');
+}
+
+// 6. Navigation Control Workflows
+function handleBack() {
+  if (currentStep === 1) {
+    // Redirect to parent portal landing login url
+    window.location.href = '/login';
+  } else {
+    transitionStep(currentStep - 1, 'left');
+  }
+}
+
+function handleContinue() {
+  if (validateStep(currentStep)) {
+    if (currentStep === 2) {
+      populatePreview();
+    }
+    transitionStep(currentStep + 1, 'right');
+  }
+}
+
+function transitionStep(target, direction) {
+  // Hide current panel, show target panel
+  const currentPanel = document.getElementById(`step-panel-${currentStep}`);
+  const targetPanel = document.getElementById(`step-panel-${target}`);
+  
+  currentPanel.classList.add('hidden');
+  currentPanel.classList.remove('active');
+  
+  targetPanel.classList.remove('hidden');
+  targetPanel.classList.add('active');
+  
+  // Set animations
+  targetPanel.classList.remove('animate-slide-left', 'animate-slide-right');
+  targetPanel.classList.add(direction === 'right' ? 'animate-slide-right' : 'animate-slide-left');
+  
+  // Update step indicators
+  updateStepIndicators(currentStep, target);
+  
+  // Set current index
+  currentStep = target;
+  
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateStepIndicators(oldStep, newStep) {
+  // Dot states updates
+  for (let i = 1; i <= totalSteps; i++) {
+    const dot = document.getElementById(`step-dot-${i}`);
+    const label = document.getElementById(`step-label-${i}`);
+    const line = document.getElementById(`step-line-${i}`);
+    
+    // Reset active
+    dot.classList.remove('active');
+    label.classList.remove('active');
+    
+    if (i === newStep) {
+      dot.classList.add('active');
+      label.classList.add('active');
+    }
+    
+    // Completed state
+    if (i < newStep) {
+      dot.classList.add('completed');
+      dot.disabled = false;
+      label.classList.add('completed');
+      if (line) line.classList.add('completed');
+    } else {
+      dot.classList.remove('completed');
+      if (i > newStep) {
+        dot.disabled = true;
+      }
+      label.classList.remove('completed');
+      if (line) line.classList.remove('completed');
+    }
+  }
+
+  // Update Navigation buttons
+  const backText = document.getElementById('back-btn-text');
+  backText.innerText = newStep === 1 ? 'Back to Login' : 'Back';
+  
+  const continueBtn = document.getElementById('continue-btn');
+  const submitBtn = document.getElementById('submit-btn');
+  
+  if (newStep === 3) {
+    continueBtn.classList.add('hidden');
+    submitBtn.classList.remove('hidden');
+  } else {
+    continueBtn.classList.remove('hidden');
+    submitBtn.classList.add('hidden');
+    
+    // Disable continue button in step 2 if phone is not verified
+    if (newStep === 2) {
+      continueBtn.disabled = !isPhoneVerified;
+    } else {
+      continueBtn.disabled = false;
+    }
+  }
+}
+
+// 7. Form Verification & Validation Rules
+function validateStep(stepIndex) {
+  let isValid = true;
+  
+  if (stepIndex === 1) {
+    if (!formData.studentName.trim()) {
+      showError('studentName');
+      isValid = false;
+    }
+    if (!formData.branch) {
+      showError('branch');
+      isValid = false;
+    }
+    if (!formData.className) {
+      showError('className');
+      isValid = false;
+    }
+  }
+  
+  if (stepIndex === 2) {
+    if (!formData.parent1Name.trim()) {
+      showError('parent1Name');
+      isValid = false;
+    }
+    
+    const phone = formData.parent1Phone.trim();
+    if (!phone || phone.length !== 10 || !/^[6-9]\d{9}$/.test(phone)) {
+      showError('parent1Phone');
+      isValid = false;
+    } else if (!isPhoneVerified) {
+      showError('parent1Phone', 'Please verify your phone number via OTP to continue');
+      isValid = false;
+    }
+    
+    const phone2 = formData.parent2Phone.trim();
+    if (phone2 && (phone2.length !== 10 || !/^[6-9]\d{9}$/.test(phone2))) {
+      showError('parent2Phone');
+      isValid = false;
+    }
+  }
+  
+  return isValid;
+}
+
+function showError(fieldId, customMsg) {
+  const el = document.getElementById(fieldId);
+  if (el) el.classList.add('error');
+  
+  const badge = document.getElementById(`err-${fieldId}`);
+  if (badge) {
+    if (customMsg) {
+      badge.innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> ${customMsg}`;
+      lucide.createIcons();
+    }
+    badge.classList.remove('hidden');
+  }
+}
+
+// 8. Populate Step 3 Preview UI
+function populatePreview() {
+  document.getElementById('preview-studentName').innerText = formData.studentName;
+  document.getElementById('preview-branch').innerText = branchNames[formData.branch] || formData.branch;
+  document.getElementById('preview-className').innerText = formData.className;
+  
+  document.getElementById('preview-parent1Name').innerText = `${formData.parent1Name} (${formData.parent1Relation})`;
+  document.getElementById('preview-parent1Phone').innerText = `📞 +91 ${formData.parent1Phone} [Verified ✓]`;
+  
+  const p1EmailRow = document.getElementById('preview-row-parent1Email');
+  if (formData.parent1Email.trim()) {
+    document.getElementById('preview-parent1Email').innerText = formData.parent1Email.trim();
+    p1EmailRow.classList.remove('hidden');
+  } else {
+    p1EmailRow.classList.add('hidden');
+  }
+  
+  const p2Section = document.getElementById('preview-section-parent2');
+  if (formData.parent2Name.trim()) {
+    document.getElementById('preview-parent2Name').innerText = `${formData.parent2Name} (${formData.parent2Relation})`;
+    
+    const p2PhoneRow = document.getElementById('preview-row-parent2Phone');
+    if (formData.parent2Phone.trim()) {
+      document.getElementById('preview-parent2Phone').innerText = `📞 +91 ${formData.parent2Phone.trim()}`;
+      p2PhoneRow.classList.remove('hidden');
+    } else {
+      p2PhoneRow.classList.add('hidden');
+    }
+    
+    const p2EmailRow = document.getElementById('preview-row-parent2Email');
+    if (formData.parent2Email.trim()) {
+      document.getElementById('preview-parent2Email').innerText = formData.parent2Email.trim();
+      p2EmailRow.classList.remove('hidden');
+    } else {
+      p2EmailRow.classList.add('hidden');
+    }
+    
+    p2Section.classList.remove('hidden');
+  } else {
+    p2Section.classList.add('hidden');
+  }
+}
+
+// 9. Submit Completed Document to Firestore
+async function handleFinalSubmit() {
+  if (!validateStep(1) || !validateStep(2)) {
+    transitionStep(2, 'left');
+    return;
+  }
+  
+  if (!isPhoneVerified) {
+    showGlobalError('Verification is incomplete. Please verify phone in step 2.');
+    transitionStep(2, 'left');
+    return;
+  }
+  
+  hideGlobalError();
+  
+  const idleBtn = document.getElementById('submit-btn-idle');
+  const loadBtn = document.getElementById('submit-btn-loading');
+  const submitBtn = document.getElementById('submit-btn');
+  
+  submitBtn.disabled = true;
+  idleBtn.classList.add('hidden');
+  loadBtn.classList.remove('hidden');
+  
+  try {
+    const parent2Data = formData.parent2Name.trim() ? {
+      name: formData.parent2Name.trim(),
+      relation: formData.parent2Relation,
+      phone: formData.parent2Phone.trim(),
+      email: formData.parent2Email.trim()
+    } : null;
+
+    // Create document in registrations collection
+    await db.collection('registrations').add({
+      studentName: formData.studentName.trim(),
+      branch: formData.branch,
+      className: formData.className,
+      parent1: {
+        name: formData.parent1Name.trim(),
+        relation: formData.parent1Relation,
+        phone: formData.parent1Phone.trim(),
+        email: formData.parent1Email.trim(),
+        verifiedUid: verifiedUid
+      },
+      parent2: parent2Data,
+      status: 'pending',
+      submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    // On success: show success screen
+    document.getElementById('regForm').classList.add('hidden');
+    document.getElementById('step-panel-3').classList.add('hidden');
+    document.getElementById('back-btn').classList.add('hidden');
+    document.getElementById('submit-btn').classList.add('hidden');
+    document.getElementById('reg-footer').classList.add('hidden');
+    
+    document.getElementById('success-student-name').innerText = formData.studentName;
+    document.getElementById('success-screen').classList.remove('hidden');
+  } catch (err) {
+    console.error('Final registration submit error:', err);
+    showGlobalError('Database write failed. Please check network/permissions and try again.');
+    submitBtn.disabled = false;
+    idleBtn.classList.remove('hidden');
+    loadBtn.classList.add('hidden');
+  }
+}
+
+function showGlobalError(msg) {
+  const box = document.getElementById('global-submit-error');
+  document.getElementById('global-submit-error-text').innerText = msg;
+  box.classList.remove('hidden');
+}
+
+function hideGlobalError() {
+  document.getElementById('global-submit-error').classList.add('hidden');
+}
