@@ -331,10 +331,7 @@ function hideOtpError() {
 
 // 6. Navigation Control Workflows
 function handleBack() {
-  if (currentStep === 1) {
-    // Redirect to parent portal landing login url
-    window.location.href = '/login';
-  } else {
+  if (currentStep > 1) {
     transitionStep(currentStep - 1, 'left');
   }
 }
@@ -406,8 +403,14 @@ function updateStepIndicators(oldStep, newStep) {
   }
 
   // Update Navigation buttons
-  const backText = document.getElementById('back-btn-text');
-  backText.innerText = newStep === 1 ? 'Back to Login' : 'Back';
+  const backBtn = document.getElementById('back-btn');
+  if (newStep === 1) {
+    backBtn.classList.add('hidden');
+  } else {
+    backBtn.classList.remove('hidden');
+    const backText = document.getElementById('back-btn-text');
+    backText.innerText = 'Back';
+  }
   
   const continueBtn = document.getElementById('continue-btn');
   const submitBtn = document.getElementById('submit-btn');
