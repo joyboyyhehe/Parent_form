@@ -44,6 +44,10 @@ let confirmationResult = null;
 let sendingOtp = false;
 let verifyingOtp = false;
 
+// Resend OTP Countdown Timer States
+let resendTimer = null;
+let resendSecondsRemaining = 0;
+
 // Branch Maps for Preview UI
 const branchNames = {
   'padmanabhanagar': 'Padmanabhanagar',
@@ -195,6 +199,9 @@ async function requestOtp() {
     document.getElementById('sent-phone-display').innerText = `+91 ${phone}`;
     document.getElementById('otp-confirm-box').classList.remove('hidden');
     sendBtn.classList.add('hidden');
+    
+    // Start OTP resend timer countdown
+    startResendCountdown();
   } catch (err) {
     console.error('Send OTP error:', err);
     showOtpError(err.message || 'Failed to send SMS verification code.');
@@ -221,6 +228,9 @@ async function confirmOtp() {
     const result = await confirmationResult.confirm(otpVal);
     verifiedUid = result.user.uid;
     isPhoneVerified = true;
+    
+    // Clear OTP resend timer upon successful validation
+    clearInterval(resendTimer);
     
     // Hide OTP UI elements
     document.getElementById('otp-actions-gate').classList.add('hidden');
@@ -250,6 +260,16 @@ function resetVerification() {
   verifiedUid = null;
   confirmationResult = null;
   
+  // Clear the resend timer countdown
+  clearInterval(resendTimer);
+  const timerTextEl = document.getElementById('otp-timer-text');
+  const resendBtn = document.getElementById('resend-otp-btn');
+  if (timerTextEl) timerTextEl.classList.add('hidden');
+  if (resendBtn) {
+    resendBtn.classList.add('hidden');
+    resendBtn.disabled = true;
+  }
+  
   document.getElementById('verified-badge').classList.add('hidden');
   document.getElementById('change-phone-btn').classList.add('hidden');
   document.getElementById('parent1Phone').disabled = false;
@@ -264,6 +284,39 @@ function resetVerification() {
   document.getElementById('otpCode').value = '';
   hideOtpError();
   lucide.createIcons();
+}
+
+function startResendCountdown() {
+  clearInterval(resendTimer);
+  resendSecondsRemaining = 30;
+  
+  const timerTextEl = document.getElementById('otp-timer-text');
+  const resendBtn = document.getElementById('resend-otp-btn');
+  
+  if (resendBtn) {
+    resendBtn.classList.add('hidden');
+    resendBtn.disabled = true;
+  }
+  if (timerTextEl) {
+    timerTextEl.classList.remove('hidden');
+    timerTextEl.innerText = `Resend code in ${resendSecondsRemaining}s`;
+  }
+  
+  resendTimer = setInterval(() => {
+    resendSecondsRemaining--;
+    if (resendSecondsRemaining <= 0) {
+      clearInterval(resendTimer);
+      if (timerTextEl) timerTextEl.classList.add('hidden');
+      if (resendBtn) {
+        resendBtn.classList.remove('hidden');
+        resendBtn.disabled = false;
+      }
+    } else {
+      if (timerTextEl) {
+        timerTextEl.innerText = `Resend code in ${resendSecondsRemaining}s`;
+      }
+    }
+  }, 1000);
 }
 
 function showOtpError(msg) {
@@ -377,46 +430,64 @@ function updateStepIndicators(oldStep, newStep) {
 
 // 7. Form Verification & Validation Rules
 function validateStep(stepIndex) {
-  let isValid = true;
+  const invalidFields = [];
   
   if (stepIndex === 1) {
     if (!formData.studentName.trim()) {
       showError('studentName');
-      isValid = false;
+      invalidFields.push('studentName');
     }
     if (!formData.branch) {
       showError('branch');
-      isValid = false;
+      invalidFields.push('branch');
     }
     if (!formData.className) {
       showError('className');
-      isValid = false;
+      invalidFields.push('className');
     }
   }
   
   if (stepIndex === 2) {
     if (!formData.parent1Name.trim()) {
       showError('parent1Name');
-      isValid = false;
+      invalidFields.push('parent1Name');
     }
     
     const phone = formData.parent1Phone.trim();
     if (!phone || phone.length !== 10 || !/^[6-9]\d{9}$/.test(phone)) {
       showError('parent1Phone');
-      isValid = false;
+      invalidFields.push('parent1Phone');
     } else if (!isPhoneVerified) {
       showError('parent1Phone', 'Please verify your phone number via OTP to continue');
-      isValid = false;
+      invalidFields.push('parent1Phone');
+      
+      // Auto-reveal the OTP gate if hidden so they can click verify easily
+      const verifyGate = document.getElementById('otp-actions-gate');
+      if (verifyGate) verifyGate.classList.remove('hidden');
     }
     
     const phone2 = formData.parent2Phone.trim();
     if (phone2 && (phone2.length !== 10 || !/^[6-9]\d{9}$/.test(phone2))) {
       showError('parent2Phone');
-      isValid = false;
+      invalidFields.push('parent2Phone');
     }
   }
   
-  return isValid;
+  if (invalidFields.length > 0) {
+    // Focus and scroll to the first invalid field
+    const firstInvalidId = invalidFields[0];
+    const firstInvalidEl = document.getElementById(firstInvalidId);
+    if (firstInvalidEl) {
+      firstInvalidEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Delay focus slightly to allow smooth scroll animation to finish nicely on mobile
+      setTimeout(() => {
+        firstInvalidEl.focus();
+      }, 300);
+    }
+    return false;
+  }
+  
+  return true;
 }
 
 function showError(fieldId, customMsg) {
