@@ -55,8 +55,7 @@
   <div class="reg-bg-orb reg-bg-orb-2"></div>
   <div class="reg-bg-orb reg-bg-orb-3"></div>
 
-  <!-- Invisible Recaptcha for Phone Verification -->
-  <div id="recaptcha-container"></div>
+
 
   <!-- Main Container -->
   <div class="max-w-[520px] w-100 mx-auto z-10 flex-grow flex flex-col justify-center">
@@ -68,10 +67,6 @@
       </div>
       <h1 class="font-poppins text-[28px] font-extrabold text-navy leading-none mt-3">Happy Times</h1>
       <p class="text-xs text-navy-lighter font-semibold tracking-[1.5px] uppercase mt-1">Preschool & Montessori</p>
-      <div class="reg-app-banner">
-        <i data-lucide="sparkles" class="w-4 h-4 text-primary animate-pulse"></i>
-        <span>OTP verification is required during registration to prevent fake signups.</span>
-      </div>
     </header>
 
     <!-- Progress Steps Tracker -->
@@ -88,7 +83,7 @@
 
       <!-- Step 2 Dot -->
       <div class="reg-progress-item">
-        <button id="step-dot-2" class="reg-step-dot" disabled aria-label="Step 2: Guardian & Mobile OTP">
+        <button id="step-dot-2" class="reg-step-dot" disabled aria-label="Step 2: Guardian Information">
           <i data-lucide="user" class="w-[18px] h-[18px]"></i>
         </button>
         <span id="step-label-2" class="reg-step-label">Parent Info</span>
@@ -176,7 +171,7 @@
             </div>
             <div>
               <h2 class="text-xl font-bold text-navy">Guardian Information</h2>
-              <p class="text-xs text-navy-lighter mt-0.5">Enter details and verify primary phone via OTP</p>
+              <p class="text-xs text-navy-lighter mt-0.5">Enter details and contact numbers</p>
             </div>
           </div>
 
@@ -200,53 +195,17 @@
               <input type="hidden" id="parent1Relation" value="Mother">
             </div>
 
-            <!-- Primary Mobile with Verification Gate -->
+            <!-- Primary Mobile Number -->
             <div class="flex flex-col gap-1.5">
               <label class="text-xs font-semibold text-navy flex items-center gap-1.5" for="parent1Phone">
                 <i data-lucide="phone" class="w-3.5 h-3.5"></i> Primary Mobile Number <span class="text-primary font-bold">*</span>
               </label>
               
-              <div class="flex gap-3 items-center w-full">
-                <div class="flex items-center border-2 border-gray-200 rounded-2xl bg-white/70 overflow-hidden focus-within:border-primary focus-within:bg-white focus-within:ring-4 focus-within:ring-primary/8 transition-all duration-300 h-[50px] flex-grow">
-                  <span class="bg-gray-50 border-r border-gray-200 px-4 h-full flex items-center justify-center text-[15px] font-semibold text-navy-lighter select-none">+91</span>
-                  <input id="parent1Phone" type="tel" class="w-full h-full px-4 text-[15px] font-semibold text-navy bg-transparent outline-none border-none" placeholder="9876543210" maxlength="10" required autocomplete="off">
-                </div>
-                <button type="button" id="change-phone-btn" class="reg-phone-edit-btn hidden h-[50px] flex items-center" onclick="resetVerification()">
-                  <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Change
-                </button>
+              <div class="flex items-center border-2 border-gray-200 rounded-2xl bg-white/70 overflow-hidden focus-within:border-primary focus-within:bg-white focus-within:ring-4 focus-within:ring-primary/8 transition-all duration-300 h-[50px] w-full">
+                <span class="bg-gray-50 border-r border-gray-200 px-4 h-full flex items-center justify-center text-[15px] font-semibold text-navy-lighter select-none">+91</span>
+                <input id="parent1Phone" type="tel" class="w-full h-full px-4 text-[15px] font-semibold text-navy bg-transparent outline-none border-none" placeholder="9876543210" maxlength="10" required autocomplete="off">
               </div>
               <span id="err-parent1Phone" class="reg-field-error hidden"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Valid 10-digit number required</span>
-              <span id="verified-badge" class="reg-phone-verified-badge hidden">
-                <i data-lucide="check-circle-2" class="w-4 h-4"></i> Phone Verified Successfully ✓
-              </span>
-
-              <!-- OTP Actions Gate -->
-              <div id="otp-actions-gate" class="reg-otp-gate hidden">
-                <div id="otp-error-box" class="reg-otp-error hidden">
-                  <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
-                  <span id="otp-error-text">Failed to send OTP.</span>
-                </div>
-
-                <button type="button" id="send-otp-btn" class="reg-otp-trigger-btn" onclick="requestOtp()">
-                  <i data-lucide="shield-check" class="w-4 h-4"></i> Verify Phone via SMS OTP
-                </button>
-
-                <div id="otp-confirm-box" class="flex flex-col gap-2 w-full hidden">
-                  <p class="text-xs text-navy-lighter font-medium">
-                    Enter the 6-digit OTP code sent to <strong id="sent-phone-display">+91 0000000000</strong>
-                  </p>
-                  <div class="flex gap-2.5 w-full">
-                    <input type="tel" id="otpCode" class="reg-otp-input" placeholder="••••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code">
-                    <button type="button" id="verify-otp-btn" class="reg-otp-verify-btn" onclick="confirmOtp()">Confirm</button>
-                  </div>
-                  <div class="flex justify-between items-center mt-1 px-1">
-                    <span id="otp-timer-text" class="text-xs text-navy-lighter font-medium"></span>
-                    <button type="button" id="resend-otp-btn" class="text-xs font-bold text-primary hover:text-primary-light disabled:opacity-50 disabled:cursor-not-allowed hidden" onclick="requestOtp()" disabled>
-                      Resend OTP
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <!-- Primary Email -->
@@ -347,7 +306,7 @@
                 </div>
                 <div class="reg-preview-item">
                   <span class="reg-preview-label">Mobile Number</span>
-                  <span id="preview-parent1Phone" class="reg-preview-value text-success font-bold">—</span>
+                  <span id="preview-parent1Phone" class="reg-preview-value font-bold">—</span>
                 </div>
                 <div id="preview-row-parent1Email" class="reg-preview-item hidden">
                   <span class="reg-preview-label">Email Address</span>
@@ -435,7 +394,7 @@
           </div>
           <div class="reg-success-info-item">
             <i data-lucide="shield-check" class="w-[18px] h-[18px]"></i>
-            <span>Your verified mobile number is logged securely for portal login access.</span>
+            <span>Your mobile number is logged securely for portal login access.</span>
           </div>
           <div class="reg-success-info-item">
             <i data-lucide="heart" class="w-[18px] h-[18px]"></i>
