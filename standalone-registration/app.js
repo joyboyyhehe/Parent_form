@@ -36,17 +36,8 @@ const formData = {
   parent2Email: ''
 };
 
-// Verification and OTP Flow States
-let isPhoneVerified = false;
-let verifiedUid = null;
-let recaptchaVerifier = null;
-let confirmationResult = null;
-let sendingOtp = false;
-let verifyingOtp = false;
-
-// Resend OTP Countdown Timer States
-let resendTimer = null;
-let resendSecondsRemaining = 0;
+// Verification and OTP Flow States (OTP/reCAPTCHA disabled)
+let isPhoneVerified = true;
 
 // Branch Maps for Preview UI
 const branchNames = {
@@ -107,18 +98,7 @@ function setupValidationListeners() {
       // Save value
       formData[id] = e.target.value;
       
-      // Real-time Phone Verification Reset Trigger
-      if (id === 'parent1Phone') {
-        resetVerification();
-        
-        // Auto-show/hide OTP Verify Action Card
-        const verifyGate = document.getElementById('otp-actions-gate');
-        if (e.target.value.length === 10) {
-          verifyGate.classList.remove('hidden');
-        } else {
-          verifyGate.classList.add('hidden');
-        }
-      }
+
       
       // Clear specific error highlights
       e.target.classList.remove('error');
@@ -149,191 +129,7 @@ function setupValidationListeners() {
   });
 }
 
-// 5. Firebase SMS OTP Handlers
-function getRecaptchaVerifier() {
-  resetRecaptcha();
-  
-  recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-    size: 'invisible',
-    callback: () => {
-      // reCAPTCHA solved
-    },
-    'expired-callback': () => {
-      showOtpError('reCAPTCHA expired. Please try again.');
-      resetRecaptcha();
-    }
-  });
-  return recaptchaVerifier;
-}
 
-function resetRecaptcha() {
-  if (recaptchaVerifier) {
-    try {
-      recaptchaVerifier.clear();
-    } catch (e) {
-      console.error('Error clearing recaptcha verifier:', e);
-    }
-    recaptchaVerifier = null;
-  }
-  
-  // Clear the container DOM to prevent "reCAPTCHA has already been rendered in this element" error
-  const container = document.getElementById('recaptcha-container');
-  if (container) {
-    container.innerHTML = '';
-  }
-}
-
-async function requestOtp() {
-  hideOtpError();
-  const phone = formData.parent1Phone.trim();
-  if (!phone || phone.length !== 10) {
-    showOtpError('Please enter a valid 10-digit phone number');
-    return;
-  }
-
-  const sendBtn = document.getElementById('send-otp-btn');
-  sendBtn.disabled = true;
-  sendBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 spin"></i> Sending OTP code...`;
-  lucide.createIcons();
-  
-  try {
-    const formattedPhone = `+91${phone}`;
-    const verifier = getRecaptchaVerifier();
-    confirmationResult = await auth.signInWithPhoneNumber(formattedPhone, verifier);
-    
-    // Toggle UI state
-    document.getElementById('sent-phone-display').innerText = `+91 ${phone}`;
-    document.getElementById('otp-confirm-box').classList.remove('hidden');
-    sendBtn.classList.add('hidden');
-    
-    // Start OTP resend timer countdown
-    startResendCountdown();
-  } catch (err) {
-    console.error('Send OTP error:', err);
-    showOtpError(err.message || 'Failed to send SMS verification code.');
-    resetRecaptcha();
-    sendBtn.disabled = false;
-    sendBtn.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Verify Phone via SMS OTP`;
-    lucide.createIcons();
-  }
-}
-
-async function confirmOtp() {
-  hideOtpError();
-  const otpVal = document.getElementById('otpCode').value.trim();
-  if (!otpVal || otpVal.length !== 6) {
-    showOtpError('Please enter a 6-digit verification code');
-    return;
-  }
-
-  const verifyBtn = document.getElementById('verify-otp-btn');
-  verifyBtn.disabled = true;
-  verifyBtn.innerText = 'Syncing...';
-  
-  try {
-    const result = await confirmationResult.confirm(otpVal);
-    verifiedUid = result.user.uid;
-    isPhoneVerified = true;
-    
-    // Clear OTP resend timer upon successful validation
-    clearInterval(resendTimer);
-    
-    // Hide OTP UI elements
-    document.getElementById('otp-actions-gate').classList.add('hidden');
-    document.getElementById('parent1Phone').disabled = true;
-    document.getElementById('change-phone-btn').classList.remove('hidden');
-    document.getElementById('verified-badge').classList.remove('hidden');
-    
-    // Clear validation error if present
-    document.getElementById('parent1Phone').classList.remove('error');
-    document.getElementById('err-parent1Phone').classList.add('hidden');
-    
-    // Enable Step 2 transition continue button
-    document.getElementById('continue-btn').disabled = false;
-
-    // Immediately sign out unapproved registered accounts
-    await auth.signOut();
-  } catch (err) {
-    console.error('Verify OTP error:', err);
-    showOtpError('Incorrect verification code. Please try again.');
-    verifyBtn.disabled = false;
-    verifyBtn.innerText = 'Confirm';
-  }
-}
-
-function resetVerification() {
-  isPhoneVerified = false;
-  verifiedUid = null;
-  confirmationResult = null;
-  
-  // Clear the resend timer countdown
-  clearInterval(resendTimer);
-  const timerTextEl = document.getElementById('otp-timer-text');
-  const resendBtn = document.getElementById('resend-otp-btn');
-  if (timerTextEl) timerTextEl.classList.add('hidden');
-  if (resendBtn) {
-    resendBtn.classList.add('hidden');
-    resendBtn.disabled = true;
-  }
-  
-  document.getElementById('verified-badge').classList.add('hidden');
-  document.getElementById('change-phone-btn').classList.add('hidden');
-  document.getElementById('parent1Phone').disabled = false;
-  
-  // Reset Send OTP button UI
-  const sendBtn = document.getElementById('send-otp-btn');
-  sendBtn.classList.remove('hidden');
-  sendBtn.disabled = false;
-  sendBtn.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Verify Phone via SMS OTP`;
-  
-  document.getElementById('otp-confirm-box').classList.add('hidden');
-  document.getElementById('otpCode').value = '';
-  hideOtpError();
-  lucide.createIcons();
-}
-
-function startResendCountdown() {
-  clearInterval(resendTimer);
-  resendSecondsRemaining = 30;
-  
-  const timerTextEl = document.getElementById('otp-timer-text');
-  const resendBtn = document.getElementById('resend-otp-btn');
-  
-  if (resendBtn) {
-    resendBtn.classList.add('hidden');
-    resendBtn.disabled = true;
-  }
-  if (timerTextEl) {
-    timerTextEl.classList.remove('hidden');
-    timerTextEl.innerText = `Resend code in ${resendSecondsRemaining}s`;
-  }
-  
-  resendTimer = setInterval(() => {
-    resendSecondsRemaining--;
-    if (resendSecondsRemaining <= 0) {
-      clearInterval(resendTimer);
-      if (timerTextEl) timerTextEl.classList.add('hidden');
-      if (resendBtn) {
-        resendBtn.classList.remove('hidden');
-        resendBtn.disabled = false;
-      }
-    } else {
-      if (timerTextEl) {
-        timerTextEl.innerText = `Resend code in ${resendSecondsRemaining}s`;
-      }
-    }
-  }, 1000);
-}
-
-function showOtpError(msg) {
-  const errBox = document.getElementById('otp-error-box');
-  document.getElementById('otp-error-text').innerText = msg;
-  errBox.classList.remove('hidden');
-}
-
-function hideOtpError() {
-  document.getElementById('otp-error-box').classList.add('hidden');
-}
 
 // 6. Navigation Control Workflows
 function handleBack() {
@@ -428,12 +224,7 @@ function updateStepIndicators(oldStep, newStep) {
     continueBtn.classList.remove('hidden');
     submitBtn.classList.add('hidden');
     
-    // Disable continue button in step 2 if phone is not verified
-    if (newStep === 2) {
-      continueBtn.disabled = !isPhoneVerified;
-    } else {
-      continueBtn.disabled = false;
-    }
+    continueBtn.disabled = false;
   }
 }
 
@@ -466,14 +257,7 @@ function validateStep(stepIndex) {
     if (!phone || phone.length !== 10 || !/^[6-9]\d{9}$/.test(phone)) {
       showError('parent1Phone');
       invalidFields.push('parent1Phone');
-    } else if (!isPhoneVerified) {
-      showError('parent1Phone', 'Please verify your phone number via OTP to continue');
-      invalidFields.push('parent1Phone');
-      
-      // Auto-reveal the OTP gate if hidden so they can click verify easily
-      const verifyGate = document.getElementById('otp-actions-gate');
-      if (verifyGate) verifyGate.classList.remove('hidden');
-    }
+
     
     const phone2 = formData.parent2Phone.trim();
     if (phone2 && (phone2.length !== 10 || !/^[6-9]\d{9}$/.test(phone2))) {
@@ -520,7 +304,7 @@ function populatePreview() {
   document.getElementById('preview-className').innerText = formData.className;
   
   document.getElementById('preview-parent1Name').innerText = `${formData.parent1Name} (${formData.parent1Relation})`;
-  document.getElementById('preview-parent1Phone').innerText = `📞 +91 ${formData.parent1Phone} [Verified ✓]`;
+  document.getElementById('preview-parent1Phone').innerText = `📞 +91 ${formData.parent1Phone}`;
   
   const p1EmailRow = document.getElementById('preview-row-parent1Email');
   if (formData.parent1Email.trim()) {
@@ -563,11 +347,7 @@ async function handleFinalSubmit() {
     return;
   }
   
-  if (!isPhoneVerified) {
-    showGlobalError('Verification is incomplete. Please verify phone in step 2.');
-    transitionStep(2, 'left');
-    return;
-  }
+
   
   hideGlobalError();
   
@@ -597,7 +377,7 @@ async function handleFinalSubmit() {
         relation: formData.parent1Relation,
         phone: formData.parent1Phone.trim(),
         email: formData.parent1Email.trim(),
-        verifiedUid: verifiedUid
+        verifiedUid: null
       },
       parent2: parent2Data,
       status: 'pending',
