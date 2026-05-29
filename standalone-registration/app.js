@@ -257,8 +257,8 @@ function validateStep(stepIndex) {
     if (!phone || phone.length !== 10 || !/^[6-9]\d{9}$/.test(phone)) {
       showError('parent1Phone');
       invalidFields.push('parent1Phone');
+    }
 
-    
     const phone2 = formData.parent2Phone.trim();
     if (phone2 && (phone2.length !== 10 || !/^[6-9]\d{9}$/.test(phone2))) {
       showError('parent2Phone');
